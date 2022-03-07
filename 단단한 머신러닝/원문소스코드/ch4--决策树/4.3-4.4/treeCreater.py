@@ -1,6 +1,6 @@
 '''
-拟合函数中，X支持pd.DataFrame数据类型；y暂只支持pd.Series类型，其他数据类型未测试，
-目前在西瓜数据集上和sklearn中自带的iris数据集上运行正常，以后若发现有其他bug，再修复。
+피팅 함수에서 X는 pd.DataFrame 데이터 형식을 지원하고 y는 pd.Series 형식만 지원하며 다른 데이터 형식은 테스트되지 않았습니다.
+현재 sklearn과 함께 제공되는 수박 데이터 세트와 홍채 데이터 세트에서 정상적으로 실행되며, 향후 다른 버그가 발견되면 수정될 예정입니다.
 '''
 
 import numpy as np
@@ -9,6 +9,9 @@ from sklearn.utils.multiclass import type_of_target
 import treePlottter
 import pruning
 
+"""
+    해당 파일에는 크게 Node 클래스와 DecisionTree 클래스가 존재
+"""
 
 class Node(object):
     def __init__(self):
@@ -26,14 +29,14 @@ class Node(object):
 
 class DecisionTree(object):
     '''
-    没有针对缺失值的情况作处理。
+        누락된 값 처리 없음
     '''
 
     def __init__(self, criterion='gini', pruning=None):
         '''
 
-        :param criterion: 划分方法选择，'gini', 'infogain', 'gainratio', 三种选项。
-        :param pruning:   是否剪枝。 'pre_pruning' 'post_pruning'
+        :param criterion: 분할 방식 선택, 'gini', 'infogain', 'gainratio', 3가지 옵션
+        :param pruning:   가지치기 여부, 'pre_pruning' 'post_pruning'
         '''
         assert criterion in ('gini', 'infogain', 'gainratio')
         assert pruning in (None, 'pre_pruning', 'post_pruning')
@@ -44,7 +47,7 @@ class DecisionTree(object):
         '''
         生成决策树
         -------
-        :param X:  只支持DataFrame类型数据，因为DataFrame中已有列名，省去一个列名的参数。不支持np.array等其他数据类型
+        :param X:  DataFrame에는 이미 열 이름이 있으므로 DataFrame 형식의 데이터만 지원하므로 열 이름의 매개 변수는 생략됩니다. np.array와 같은 다른 데이터 유형은 지원되지 않습니다.
         :param y:
         :return:
         '''
@@ -59,7 +62,7 @@ class DecisionTree(object):
             X_val.reset_index(inplace=True, drop=True)
             y_val.reset_index(inplace=True, drop=True)
 
-        self.columns = list(X_train.columns)  # 包括原数据的列名
+        self.columns = list(X_train.columns)  # 원본 데이터의 열 이름 포함
         self.tree_ = self.generate_tree(X_train, y_train)
 
         if self.pruning == 'pre_pruning':
@@ -70,23 +73,29 @@ class DecisionTree(object):
         return self
 
     def generate_tree(self, X, y):
+
+        # 노드 생성
         my_tree = Node()
+
+        # 노드의 가지개수는 0개라고 초기화 해준다
         my_tree.leaf_num = 0
-        if y.nunique() == 1:  # 属于同一类别
+        if y.nunique() == 1:  # y의 값의 unique값이 하나밖에 없을 때 아래와 같이 노드의 Attribute를 수정하고 수정한 노드를 반환
             my_tree.is_leaf = True
             my_tree.leaf_class = y.values[0]
             my_tree.high = 0
             my_tree.leaf_num += 1
             return my_tree
 
-        if X.empty:  # 特征用完了，数据为空，返回样本数最多的类
+        if X.empty:  # 기능이 모두 소모되고 데이터가 비어 있으며 샘플 수가 가장 많은 클래스가 반환됩니다.
             my_tree.is_leaf = True
             my_tree.leaf_class = pd.value_counts(y).index[0]
             my_tree.high = 0
             my_tree.leaf_num += 1
             return my_tree
 
+        # 위에서 설정했던 분리기준 파라미터에 따라 ( default 값은 gini ) 최적 분리할 변수
         best_feature_name, best_impurity = self.choose_best_feature_to_split(X, y)
+
 
         my_tree.feature_name = best_feature_name
         my_tree.impurity = best_impurity[0]
@@ -94,44 +103,55 @@ class DecisionTree(object):
 
         feature_values = X.loc[:, best_feature_name]
 
-        if len(best_impurity) == 1:  # 离散值
+        if len(best_impurity) == 1:  # 이산 값
+
+            # 수치형 변수가 아님
             my_tree.is_continuous = False
 
+            # 설정했던 best_feature_name의 unique value를 정의한다.
+            # 예를 들어 best_feature_name의 값이 범주형이고 3개의 unique value가 있을 수 있다.
             unique_vals = pd.unique(feature_values)
+
+            # sub_X에는 best_feature_name이 아닌 관측치들을 담는다.
             sub_X = X.drop(best_feature_name, axis=1)
 
             max_high = -1
+            # unique_vals에 따라서 subtree를 생성한다.(가지를 친다)
             for value in unique_vals:
                 my_tree.subtree[value] = self.generate_tree(sub_X[feature_values == value], y[feature_values == value])
-                if my_tree.subtree[value].high > max_high:  # 记录子树下最高的高度
+                if my_tree.subtree[value].high > max_high:  # 하위 트리 아래에서 가장 높은 높이를 기록합니다.
                     max_high = my_tree.subtree[value].high
                 my_tree.leaf_num += my_tree.subtree[value].leaf_num
 
+            # 깊이 +1 증가
             my_tree.high = max_high + 1
 
-        elif len(best_impurity) == 2:  # 连续值
+        elif len(best_impurity) == 2:  # 연속값, 단단한 머신러닝 4.4.1 부분
             my_tree.is_continuous = True
             my_tree.split_value = best_impurity[1]
             up_part = '>= {:.3f}'.format(my_tree.split_value)
             down_part = '< {:.3f}'.format(my_tree.split_value)
 
+            # 수치형 변수를 up_part down_part로 나눈뒤 각각의 노드에서 generate_tree 함수 실행(노드 생성)
             my_tree.subtree[up_part] = self.generate_tree(X[feature_values >= my_tree.split_value],
                                                           y[feature_values >= my_tree.split_value])
             my_tree.subtree[down_part] = self.generate_tree(X[feature_values < my_tree.split_value],
-                                                            y[feature_values < my_tree.split_value])
+                                                            y[feature_values < my_tree.split_value])    
 
             my_tree.leaf_num += (my_tree.subtree[up_part].leaf_num + my_tree.subtree[down_part].leaf_num)
 
+            # 깊이 +1
             my_tree.high = max(my_tree.subtree[up_part].high, my_tree.subtree[down_part].high) + 1
 
         return my_tree
 
     def predict(self, X):
         '''
-        同样只支持 pd.DataFrame类型数据
-        :param X:  pd.DataFrame 类型
+        pd.DataFrame만 지원
+        :param X:  pd.DataFrame
         :return:   若
         '''
+        # 만약 객체의 tree_ attribute가 없다면 에러 발생 -> 아직 fitting이 되지 않았기 때문
         if not hasattr(self, "tree_"):
             raise Exception('you have to fit first before predict.')
         if X.ndim == 1:
@@ -141,9 +161,10 @@ class DecisionTree(object):
 
     def predict_single(self, x, subtree=None):
         '''
-        预测单一样本。 实际上这里也可以写成循环，写成递归样本大的时候有栈溢出的风险。
+        단일 샘플을 예측합니다. 사실 루프로도 쓸 수 있는데, 재귀 샘플이 크면 스택 오버플로의 위험이 있습니다.
+        이 함수는 재귀형태를 띄고 있는데 만약 샘플이 많다면 Stack Overflow가 될 수도 있다는 것을 말하는 것 같다.
         :param x:
-        :param subtree: 根据特征，往下递进的子树。
+        :param subtree: feature에 따른 내림차순 하위 트리입니다.
         :return:
         '''
         if subtree is None:
@@ -152,7 +173,7 @@ class DecisionTree(object):
         if subtree.is_leaf:
             return subtree.leaf_class
 
-        if subtree.is_continuous:  # 若是连续值，需要判断是
+        if subtree.is_continuous:  # 연속적인 값이라면 연속적인지 여부를 판단할 필요가 있다.
             if x[subtree.feature_index] >= subtree.split_value:
                 return self.predict_single(x, subtree.subtree['>= {:.3f}'.format(subtree.split_value)])
             else:
@@ -349,8 +370,9 @@ if __name__ == '__main__':
     # treePlottter.create_plot(tree.tree_)
 
     # 4.4
-    data_path2 = r'C:\Users\hanmi\Documents\xiguabook\watermelon2_0_Ch.txt'
-    data = pd.read_table(data_path2, encoding='utf8', delimiter=',', index_col=0)
+    data_path = "../../data/watermelon2_0_Ch.txt"
+    # data_path2 = r'C:\Users\hanmi\Documents\xiguabook\watermelon2_0_Ch.txt'
+    data = pd.read_table(data_path, encoding='utf8', delimiter=',', index_col=0)
 
     train = [1, 2, 3, 6, 7, 10, 14, 15, 16, 17]
     train = [i - 1 for i in train]
