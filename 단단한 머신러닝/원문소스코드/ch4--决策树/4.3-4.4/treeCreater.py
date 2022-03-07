@@ -191,6 +191,7 @@ class DecisionTree(object):
         elif self.criterion == 'gainratio':
             return self.choose_best_feature_gainratio(X, y)
 
+    # 최적 분할 설정하는 함수(gini에 따라서)
     def choose_best_feature_gini(self, X, y):
         features = X.columns
         best_feature_name = None
@@ -204,6 +205,7 @@ class DecisionTree(object):
 
         return best_feature_name, best_gini
 
+    # 최적 분할 설정하는 함수(infogain에 따라서)
     def choose_best_feature_infogain(self, X, y):
         '''
         以返回值中best_info_gain 的长度来判断当前特征是否为连续值，若长度为 1 则为离散值，若长度为 2 ， 则为连续值
@@ -225,6 +227,7 @@ class DecisionTree(object):
 
         return best_feature_name, best_info_gain
 
+    # 최적 분할 설정하는 함수(gainratio에 따라서)
     def choose_best_feature_gainratio(self, X, y):
         '''
         以返回值中best_gain_ratio 的长度来判断当前特征是否为连续值，若长度为 1 则为离散值，若长度为 2 ， 则为连续值
@@ -246,9 +249,10 @@ class DecisionTree(object):
 
         return best_feature_name, best_gain_ratio
 
+    # 지니 계수 계산(연속값의 경우 이분할 이후 지니 계수 계산하는 식)
     def gini_index(self, feature, y, is_continuous=False):
         '''
-        计算基尼指数， 对于连续值，选择基尼系统最小的点，作为分割点
+        Gini 지수를 계산하고 연속 값의 경우 Gini 시스템이 가장 작은 점을 분할점으로 선택합니다.
         -------
         :param feature:
         :param y:
@@ -257,17 +261,21 @@ class DecisionTree(object):
         m = y.shape[0]
         unique_value = pd.unique(feature)
         if is_continuous:
-            unique_value.sort()  # 排序, 用于建立分割点
-            # 这里其实也可以直接用feature值作为分割点，但这样会出现空集， 所以还是按照书中4.7式建立分割点。好处是不会出现空集
+            unique_value.sort()  # 분할점을 만드는 데 사용되는 정렬
+            # 사실, feature 값은 split point로 직접 사용될 수도 있지만, 빈 집합이 있을 것이기 때문에 
+            # split point는 여전히 책의 공식 4.7에 따라 설정됩니다. 장점은 빈 세트가 없다는 것입니다.
+
+            # list comprehension을 이용한 분할점 리스트 생성
             split_point_set = [(unique_value[i] + unique_value[i + 1]) / 2 for i in range(len(unique_value) - 1)]
 
             min_gini = float('inf')
             min_gini_point = None
-            for split_point_ in split_point_set:  # 遍历所有的分割点，寻找基尼指数最小的分割点
+            for split_point_ in split_point_set:  # 모든 분할점을 탐색하고 가장 작은 지니 인덱스를 갖는 분할점을 찾습니다.
                 Dv1 = y[feature <= split_point_]
                 Dv2 = y[feature > split_point_]
                 gini_index = Dv1.shape[0] / m * self.gini(Dv1) + Dv2.shape[0] / m * self.gini(Dv2)
 
+                # 지니 인덱스가 min_gini보다 작다면 min_gini 변수를 계속 업데이트
                 if gini_index < min_gini:
                     min_gini = gini_index
                     min_gini_point = split_point_
@@ -277,16 +285,18 @@ class DecisionTree(object):
             for value in unique_value:
                 Dv = y[feature == value]
                 m_dv = Dv.shape[0]
-                gini = self.gini(Dv)  # 原书4.5式
-                gini_index += m_dv / m * gini  # 4.6式
+                gini = self.gini(Dv)  # 4.5 식
+                gini_index += m_dv / m * gini  # 4.6 식
 
             return [gini_index]
 
+    # 지니계수 계산식
     def gini(self, y):
         p = pd.value_counts(y) / y.shape[0]
         gini = 1 - np.sum(p ** 2)
         return gini
 
+    # 정보이득 계산식
     def info_gain(self, feature, y, entD, is_continuous=False):
         '''
         计算信息增益
@@ -324,6 +334,7 @@ class DecisionTree(object):
             gain = entD - feature_ent  # 原书中4.2式
             return [gain]
 
+    # GainRatio 계산식
     def info_gainRatio(self, feature, y, entD, is_continuous=False):
         '''
         计算信息增益率 参数和info_gain方法中参数一致
@@ -353,6 +364,7 @@ class DecisionTree(object):
             grain_ratio = self.info_gain(feature, y, entD, is_continuous)[0] / IV
             return [grain_ratio]
 
+    # 엔트로피 계산식
     def entroy(self, y):
         p = pd.value_counts(y) / y.shape[0]  # 计算各类样本所占比率
         ent = np.sum(-p * np.log2(p))
